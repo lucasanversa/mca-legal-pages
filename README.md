@@ -7,7 +7,7 @@ Arquivos:
 - data-deletion.html
 
 Antes de publicar:
-1. Substitua `SEU_EMAIL_DE_CONTATO_AQUI` pelo e-mail que você deseja tornar público.
+1. Substitua `nakuyzera@gmail.com` pelo e-mail que você deseja tornar público.
 2. Publique a pasta em um host HTTPS.
 3. Use as URLs públicas correspondentes nos campos da Meta.
 
