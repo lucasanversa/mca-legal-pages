@@ -1,0 +1,622 @@
+{
+  "name": "Atendimento WhatsApp + CRM da Thais",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "atendimento",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "5a328233-8c42-48c6-b498-0816339ca225",
+      "name": "Mensagem Recebida",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "88b7339a-77d8-40d9-b27b-81bfd7464fca"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8410f701-3427-42cb-a952-55af7db6d680",
+              "name": "crmBaseUrl",
+              "value": "https://COLOQUE-A-URL-DO-CRM-DA-THAIS/api",
+              "type": "string"
+            },
+            {
+              "id": "ca2bec84-800c-450a-85a4-4f2e4cc5c398",
+              "name": "crmToken",
+              "value": "COLOQUE-O-TOKEN-DO-CRM",
+              "type": "string"
+            },
+            {
+              "id": "0fcda5a8-c36f-446f-a149-fc9097f9e165",
+              "name": "wppSendUrl",
+              "value": "https://COLOQUE-A-URL-DE-ENVIO-DO-WHATSAPP/messages",
+              "type": "string"
+            },
+            {
+              "id": "21710a12-499e-468d-87fa-6a0907f768b5",
+              "name": "wppToken",
+              "value": "COLOQUE-O-TOKEN-DO-WHATSAPP",
+              "type": "string"
+            },
+            {
+              "id": "5206dcc0-f432-4011-85e4-6de3311ed294",
+              "name": "nomeEmpresa",
+              "value": "MCA",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "2c363c72-c4eb-4525-8678-60b78daa03da",
+      "name": "Configuração",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.item.json.body || $input.item.json;\n// Ajuste estes caminhos conforme o provedor de WhatsApp usado (Z-API, Evolution, Meta, etc.)\nconst phone = String(b.phone || b.from || b.sender || b?.data?.key?.remoteJid || '').replace(/\\D/g, '');\nconst name  = b.name || b.senderName || b.pushName || b?.data?.pushName || 'Cliente';\nconst text  = String(b.text?.message || b.text || b.message || b?.data?.message?.conversation || '').trim();\nconst t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');\n\nlet intent = 'menu';\nif (/^1$|preco|valor|orcamento|comprar|plano|contratar/.test(t)) intent = 'comercial';\nelse if (/^2$|suporte|problema|erro|ajuda|nao funciona|duvida/.test(t)) intent = 'suporte';\nelse if (/^3$|atendente|humano|pessoa|falar com/.test(t)) intent = 'humano';\n\nreturn { json: { phone, name, text, intent } };"
+      },
+      "id": "c800168a-83fb-4b46-936a-99a84fea7b9a",
+      "name": "Normalizar Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configuração').item.json.crmBaseUrl }}/contacts",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Configuração').item.json.crmToken }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "eb2aa655-d782-4fa4-9231-bdcf7d333fa7",
+      "name": "CRM: Buscar Contato",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "f5c06acb-71ea-412c-8d11-f6383dff954a",
+              "leftValue": "={{ Array.isArray($json.data) ? $json.data.length : ($json.id ? 1 : 0) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "54c7a97a-c485-4440-b1ad-6ef325666314",
+      "name": "Contato existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').item.json.crmBaseUrl }}/contacts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Configuração').item.json.crmToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Normalizar Mensagem').item.json.name, phone: $('Normalizar Mensagem').item.json.phone, source: 'whatsapp' }) }}",
+        "options": {}
+      },
+      "id": "c6743b7a-12a3-447d-aecd-68706f8359c0",
+      "name": "CRM: Criar Contato",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "a3af1104-5a04-4745-9ad2-3ec1f215582f",
+                    "leftValue": "={{ $('Normalizar Mensagem').item.json.intent }}",
+                    "rightValue": "comercial",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "comercial"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "5ab6f119-f3da-411f-90bd-8b49702b5df5",
+                    "leftValue": "={{ $('Normalizar Mensagem').item.json.intent }}",
+                    "rightValue": "suporte",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "suporte"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "8a5abf16-e52f-4013-b3a4-693f90856a55",
+                    "leftValue": "={{ $('Normalizar Mensagem').item.json.intent }}",
+                    "rightValue": "humano",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "humano"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "menu"
+        }
+      },
+      "id": "5b90e679-cf46-418d-9975-20c61586f8f5",
+      "name": "Roteador de Intenção",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "236f7dd4-c7d7-4ee2-afd0-3e3469d49efb",
+              "name": "resposta",
+              "value": "=Olá, {{ $('Normalizar Mensagem').item.json.name }}! 👋 Bem-vindo(a) à {{ $('Configuração').item.json.nomeEmpresa }}.\n\nComo podemos ajudar?\n1️⃣ Comercial / orçamento\n2️⃣ Suporte\n3️⃣ Falar com um atendente\n\nResponda com o número da opção.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "c8a3e354-2283-473c-8235-96c8ab1cd0c0",
+      "name": "Resposta: Menu",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d0493155-9994-4b54-bc2a-a73c98e0de0c",
+              "name": "resposta",
+              "value": "Ótimo! Para montar sua proposta, me diga rapidinho: qual é o seu interesse e para quando você precisa? Um consultor comercial vai te chamar em seguida. 💼",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "cfd16f1f-38a9-4640-b105-64e57bf13399",
+      "name": "Resposta: Comercial",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0d0a307d-4b9e-4439-9fca-01838604c9cf",
+              "name": "resposta",
+              "value": "Sinto muito pelo transtorno. 🙏 Descreva o problema com o máximo de detalhes (e envie um print, se puder). Já abri um chamado para a nossa equipe.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "fcf19e8d-3c06-4388-8b56-a90e2e909676",
+      "name": "Resposta: Suporte",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4df49ddb-5051-4bfe-97f4-c43d8ea29d3b",
+              "name": "resposta",
+              "value": "Certo! Estou te transferindo para um atendente. Ele responde em breve. Horário: seg a sex, 9h às 18h. ⏳",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "ef00e860-fd6e-4815-85bf-1f2d31aa6ada",
+      "name": "Resposta: Humano",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').item.json.crmBaseUrl }}/tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Configuração').item.json.crmToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: 'Atendimento WhatsApp - ' + $('Normalizar Mensagem').item.json.intent, contact_phone: $('Normalizar Mensagem').item.json.phone, description: $('Normalizar Mensagem').item.json.text }) }}",
+        "options": {}
+      },
+      "id": "0f6658bd-376a-4f8e-a63f-caf182ce0239",
+      "name": "CRM: Criar Tarefa para Atendente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').item.json.wppSendUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Configuração').item.json.wppToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $('Normalizar Mensagem').item.json.phone, message: $json.resposta }) }}",
+        "options": {}
+      },
+      "id": "b0134082-b7fc-4a71-930d-c415d071c327",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').item.json.crmBaseUrl }}/notes",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Configuração').item.json.crmToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contact_phone: $('Normalizar Mensagem').item.json.phone, content: 'Cliente: ' + $('Normalizar Mensagem').item.json.text + ' | Intenção: ' + $('Normalizar Mensagem').item.json.intent }) }}",
+        "options": {}
+      },
+      "id": "4294aa72-5575-411a-a5ba-2a8f0ab664e5",
+      "name": "CRM: Registrar Interação",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Mensagem Recebida": {
+      "main": [
+        [
+          {
+            "node": "Configuração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuração": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "CRM: Buscar Contato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM: Buscar Contato": {
+      "main": [
+        [
+          {
+            "node": "Contato existe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contato existe?": {
+      "main": [
+        [
+          {
+            "node": "Roteador de Intenção",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CRM: Criar Contato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM: Criar Contato": {
+      "main": [
+        [
+          {
+            "node": "Roteador de Intenção",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Roteador de Intenção": {
+      "main": [
+        [
+          {
+            "node": "Resposta: Comercial",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta: Suporte",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta: Humano",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resposta: Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta: Menu": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta: Comercial": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta: Suporte": {
+      "main": [
+        [
+          {
+            "node": "CRM: Criar Tarefa para Atendente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta: Humano": {
+      "main": [
+        [
+          {
+            "node": "CRM: Criar Tarefa para Atendente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM: Criar Tarefa para Atendente": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "CRM: Registrar Interação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
